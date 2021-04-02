@@ -14,8 +14,9 @@
 
 package com.liferay.social.networking.service.impl;
 
+import com.liferay.asset.kernel.service.AssetEntryLocalService;
 import com.liferay.mail.kernel.model.MailMessage;
-import com.liferay.mail.kernel.service.MailService;
+import com.liferay.mail.kernel.service.MailServiceUtil;
 import com.liferay.portal.aop.AopService;
 import com.liferay.portal.kernel.exception.PortalException;
 import com.liferay.portal.kernel.exception.SystemException;
@@ -23,20 +24,24 @@ import com.liferay.portal.kernel.json.JSONFactoryUtil;
 import com.liferay.portal.kernel.json.JSONObject;
 import com.liferay.portal.kernel.model.Group;
 import com.liferay.portal.kernel.model.User;
+import com.liferay.portal.kernel.service.ServiceContext;
 import com.liferay.portal.kernel.theme.ThemeDisplay;
+import com.liferay.portal.kernel.util.ContentTypes;
+import com.liferay.portal.kernel.util.GetterUtil;
 import com.liferay.portal.kernel.util.PortalUtil;
 import com.liferay.portal.kernel.util.PrefsPropsUtil;
 import com.liferay.portal.kernel.util.PropsKeys;
 import com.liferay.portal.kernel.util.StringUtil;
-import com.liferay.portal.spring.extender.service.ServiceReference;
 import com.liferay.social.networking.model.WallEntry;
 import com.liferay.social.networking.service.base.WallEntryLocalServiceBaseImpl;
 
 import com.liferay.social.networking.wall.social.WallActivityKeys;
 import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
 
 import javax.mail.internet.InternetAddress;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * The implementation of the wall entry local service.
@@ -95,12 +100,12 @@ public class WallEntryLocalServiceImpl extends WallEntryLocalServiceBaseImpl {
 
 		extraDataJSONObject.put("comments", wallEntry.getComments());
 
-		if (userId != group.getClassPK()) {
-			socialActivityLocalService.addActivity(
-				userId, groupId, WallEntry.class.getName(), wallEntryId,
-				WallActivityKeys.ADD_ENTRY, extraDataJSONObject.toString(),
-				group.getClassPK());
-		}
+		socialActivityLocalService.addActivity(
+			userId, groupId, WallEntry.class.getName(), wallEntryId,
+			WallActivityKeys.ADD_ENTRY, extraDataJSONObject.toString(),
+			group.getClassPK());
+
+		_updateAsset(wallEntry, userId, groupId);
 
 		return wallEntry;
 	}
@@ -194,7 +199,7 @@ public class WallEntryLocalServiceImpl extends WallEntryLocalServiceBaseImpl {
 
 		Group group = groupLocalService.getGroup(wallEntry.getGroupId());
 
-		User user = userLocalService.getUserById(group.getClassPK());
+		User user = userLocalService.getUserById(themeDisplay.getUserId());
 
 		User wallEntryUser = userLocalService.getUserById(
 			wallEntry.getUserId());
@@ -247,10 +252,32 @@ public class WallEntryLocalServiceImpl extends WallEntryLocalServiceBaseImpl {
 		MailMessage mailMessage = new MailMessage(
 			from, to, subject, body, true);
 
-		mailService.sendEmail(mailMessage);
+		MailServiceUtil.sendEmail(mailMessage);
 	}
 
-	@ServiceReference(type = MailService.class)
-	protected MailService mailService;
+	private void _updateAsset(
+		WallEntry wallEntry, long userId, long groupId)
+		throws PortalException {
 
+		long[] assetCategoryIds = new long[] {};
+		String[] assetTagNames = new String[] {};
+		String classUuid = null;
+		String description = null;
+		double assetPriority = GetterUtil.DEFAULT_DOUBLE;
+
+		_assetEntryLocalService.updateEntry(
+			userId, groupId,
+			wallEntry.getCreateDate(), wallEntry.getModifiedDate(),
+			WallEntry.class.getName(), wallEntry.getWallEntryId(),
+			classUuid, 0, assetCategoryIds,
+			assetTagNames, true, true,
+			wallEntry.getCreateDate(), null, null, null,
+			ContentTypes.TEXT_HTML,
+			wallEntry.getComments(),
+			description, null, null, null, 0, 0,
+			assetPriority);
+	}
+
+	@Reference
+	private AssetEntryLocalService _assetEntryLocalService;
 }
